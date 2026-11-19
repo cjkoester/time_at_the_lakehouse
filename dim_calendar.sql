@@ -2,32 +2,66 @@
 -- MAGIC %md
 -- MAGIC ## Lakehouse Calendar Dimension
 -- MAGIC This notebook creates a calendar dimension (Also known as date dimension) for the lakehouse. It is intended to be reloaded daily, and defaults to loading data using a rolling 5 year period.
--- MAGIC 
+-- MAGIC
 -- MAGIC ### Directions
--- MAGIC - Set catalog and schema
--- MAGIC - Update the table location
+-- MAGIC - Set the `catalog` and `schema` parameters (notebook widgets or Lakeflow Jobs task parameters)
 -- MAGIC - Modify the date range as necessary by updating the dates CTE
--- MAGIC - Add/modify/remove columns as necessary
--- MAGIC - Schedule to run daily using Workflows
--- MAGIC 
+-- MAGIC - Add/modify/remove columns as necessary. Update both the `create table` and `insert overwrite` statements, then drop the existing table so it is recreated with the new schema
+-- MAGIC - Schedule to run daily using Lakeflow Jobs
+-- MAGIC
+-- MAGIC ### Requirements
+-- MAGIC - Unity Catalog
+-- MAGIC - Serverless compute or Databricks Runtime 15.4 LTS and above
+-- MAGIC - Predictive optimization enabled for `cluster by auto` to select clustering keys
+-- MAGIC
 -- MAGIC ### References
 -- MAGIC - [Five Simple Steps for Implementing a Star Schema in Databricks With Delta Lake](https://www.databricks.com/blog/2022/05/20/five-simple-steps-for-implementing-a-star-schema-in-databricks-with-delta-lake.html)
 -- MAGIC - [Datetime Patterns for Formatting and Parsing](https://spark.apache.org/docs/latest/sql-ref-datetime-pattern.html)
 
 -- COMMAND ----------
 
+-- DBTITLE 1,Parameters
+create widget text catalog default 'main';
+create widget text schema default 'default';
+
+-- COMMAND ----------
+
 -- DBTITLE 1,Set Catalog & Schema
-use default
+use catalog identifier(:catalog);
+use schema identifier(:schema);
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Create dim_calendar
+create table if not exists dim_calendar (
+  date_int int not null comment 'Surrogate key in yyyyMMdd format',
+  calendar_date date comment 'Calendar date',
+  calendar_year int comment 'Calendar year',
+  calendar_month string comment 'Full month name (January - December)',
+  month_of_year int comment 'Month number (1 - 12)',
+  calendar_day string comment 'Full day name (Sunday - Saturday)',
+  day_of_week int comment 'Day of week starting Sunday (1 = Sunday, 7 = Saturday)',
+  day_of_week_start_monday int comment 'Day of week starting Monday (1 = Monday, 7 = Sunday)',
+  is_week_day string comment 'Y if Monday - Friday, otherwise N',
+  day_of_month int comment 'Day of month (1 - 31)',
+  is_last_day_of_month string comment 'Y if the last day of the month, otherwise N',
+  day_of_year int comment 'Day of year (1 - 366)',
+  week_of_year_iso int comment 'ISO 8601 week of year (1 - 53)',
+  quarter_of_year int comment 'Calendar quarter (1 - 4)',
+  fiscal_year_oct_to_sep int comment 'Fiscal year for an October - September fiscal calendar',
+  fiscal_month_oct_to_sep int comment 'Fiscal month for an October - September fiscal calendar (1 = October)',
+  fiscal_year_jul_to_jun int comment 'Fiscal year for a July - June fiscal calendar',
+  fiscal_month_jul_to_jun int comment 'Fiscal month for a July - June fiscal calendar (1 = July)',
+  constraint dim_calendar_pk primary key (date_int)
+)
+comment 'Calendar dimension'
+cluster by auto
+tblproperties ('quality' = 'gold')
 
 -- COMMAND ----------
 
 -- DBTITLE 1,Load dim_calendar
-create or replace table dim_calendar
-using delta
-comment 'Calendar dimension'
-tblproperties ('quality' = 'gold', 'delta.targetFileSize' = '67108864')
-location 'dbfs:/tmp/dim_calendar'
-as
+insert overwrite dim_calendar
 --Set the date range in the dates CTE below
 with dates as (
   select explode(sequence(current_date() - interval 5 years, current_date(), interval 1 day)) AS calendar_date
@@ -66,15 +100,3 @@ select
   (month(calendar_date) + 5) % 12 + 1 AS fiscal_month_jul_to_jun
 from
   dates
-order by
-  calendar_date
-
--- COMMAND ----------
-
--- DBTITLE 1,Optimize
-optimize dim_calendar zorder by (calendar_date)
-
--- COMMAND ----------
-
--- DBTITLE 1,Vacuum
-vacuum dim_calendar
