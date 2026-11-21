@@ -1,6 +1,8 @@
 # Time at the Lakehouse
 Generate calendar and time dimensions for Databricks. Derived from [calendar-dimension-spark](https://github.com/BlueGranite/calendar-dimension-spark).
 
+For the design choices, usage examples, and ways to customize the tables, read the blog post: [Calendar and Time Dimensions for Databricks in Plain SQL](https://chris.koester.io/post/2026-11-20-databricks-calendar-and-time-dimensions/).
+
 ## Features
 - Generate calendar (date) and time dimensions as Unity Catalog managed tables
 - Plain SQL files for Lakeflow Jobs (or the SQL editor) and for Lakeflow Spark Declarative Pipelines. Copy them into your own project.
